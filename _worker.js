@@ -464,7 +464,7 @@ async function fetch(request, env, ctx) {
         return new Response(null, {
             status: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': '*', // Allow all origins for CDN compatibility
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, User-Agent, X-Requested-With',
                 'Access-Control-Max-Age': '86400',
@@ -498,7 +498,7 @@ async function fetch(request, env, ctx) {
             status: 503,
             headers: {
                 'Content-Type': 'application/grpc+proto',
-                'grpc-status': '14',
+                'grpc-status': '14', // gRPC UNAVAILABLE status code
                 'grpc-message': 'Connection unavailable',
             },
         })
