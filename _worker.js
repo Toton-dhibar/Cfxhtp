@@ -459,16 +459,32 @@ async function fetch(request, env, ctx) {
         return new Response(`Error: UUID is empty`)
     }
 
+    // Handle OPTIONS for CORS (needed for CDN proxies)
+    if (request.method === 'OPTIONS') {
+        return new Response(null, {
+            status: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, User-Agent, X-Requested-With',
+                'Access-Control-Max-Age': '86400',
+            },
+        })
+    }
+
     if (request.method === 'POST') {
         const r = await handle_post(request, cfg)
         if (r) {
             ctx.waitUntil(r.closed)
             
             // Build headers that work with CDNs and gRPC
+            // These headers ensure streaming works properly through CDN proxies
             const headers = {
                 'Content-Type': 'application/grpc+proto',
                 'X-Accel-Buffering': 'no',
-                'Cache-Control': 'no-store',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
                 'grpc-accept-encoding': 'identity,deflate,gzip',
                 'accept-encoding': 'identity,gzip',
             }
