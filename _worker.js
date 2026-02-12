@@ -430,7 +430,7 @@ const config_template = `{
         "xhttpSettings": {
           "mode": "stream-one",
           "host": "localhost",
-          "path": "/path/",
+          "path": "/",
           "noGRPCHeader": false,
           "keepAlivePeriod": 300
         },
@@ -438,8 +438,10 @@ const config_template = `{
         "tlsSettings": {
           "serverName": "localhost",
           "alpn": [
-            "h2"
-          ]
+            "h2",
+            "http/1.1"
+          ],
+          "allowInsecure": false
         }
       }
     }
@@ -461,18 +463,29 @@ async function fetch(request, env, ctx) {
         const r = await handle_post(request, cfg)
         if (r) {
             ctx.waitUntil(r.closed)
+            
+            // Build headers that work with CDNs and gRPC
+            const headers = {
+                'Content-Type': 'application/grpc+proto',
+                'X-Accel-Buffering': 'no',
+                'Cache-Control': 'no-store',
+                'grpc-accept-encoding': 'identity,deflate,gzip',
+                'accept-encoding': 'identity,gzip',
+            }
+            
             return new Response(r.readable, {
-                headers: {
-                    'X-Accel-Buffering': 'no',
-                    'Cache-Control': 'no-store',
-                    Connection: 'Keep-Alive',
-                    'User-Agent': 'Go-http-client/2.0',
-                    'Content-Type': 'application/grpc',
-                    // 'Content-Type': 'text/event-stream',
-                    // 'Transfer-Encoding': 'chunked',
-                },
+                status: 200,
+                headers: headers,
             })
         }
+        return new Response('Connection failed', {
+            status: 503,
+            headers: {
+                'Content-Type': 'application/grpc+proto',
+                'grpc-status': '14',
+                'grpc-message': 'Connection unavailable',
+            },
+        })
     }
 
     if (request.method === 'GET') {
