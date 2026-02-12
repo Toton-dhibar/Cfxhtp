@@ -430,7 +430,7 @@ const config_template = `{
         "xhttpSettings": {
           "mode": "stream-one",
           "host": "localhost",
-          "path": "/path/",
+          "path": "/",
           "noGRPCHeader": false,
           "keepAlivePeriod": 300
         },
@@ -438,8 +438,10 @@ const config_template = `{
         "tlsSettings": {
           "serverName": "localhost",
           "alpn": [
-            "h2"
-          ]
+            "h2",
+            "http/1.1"
+          ],
+          "allowInsecure": false
         }
       }
     }
@@ -457,22 +459,49 @@ async function fetch(request, env, ctx) {
         return new Response(`Error: UUID is empty`)
     }
 
+    // Handle OPTIONS for CORS (needed for CDN proxies)
+    if (request.method === 'OPTIONS') {
+        return new Response(null, {
+            status: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*', // Allow all origins for CDN compatibility
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, User-Agent, X-Requested-With',
+                'Access-Control-Max-Age': '86400',
+            },
+        })
+    }
+
     if (request.method === 'POST') {
         const r = await handle_post(request, cfg)
         if (r) {
             ctx.waitUntil(r.closed)
+            
+            // Build headers that work with CDNs and gRPC
+            // These headers ensure streaming works properly through CDN proxies
+            const headers = {
+                'Content-Type': 'application/grpc+proto',
+                'X-Accel-Buffering': 'no',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'grpc-accept-encoding': 'identity,deflate,gzip',
+                'accept-encoding': 'identity,gzip',
+            }
+            
             return new Response(r.readable, {
-                headers: {
-                    'X-Accel-Buffering': 'no',
-                    'Cache-Control': 'no-store',
-                    Connection: 'Keep-Alive',
-                    'User-Agent': 'Go-http-client/2.0',
-                    'Content-Type': 'application/grpc',
-                    // 'Content-Type': 'text/event-stream',
-                    // 'Transfer-Encoding': 'chunked',
-                },
+                status: 200,
+                headers: headers,
             })
         }
+        return new Response('Connection failed', {
+            status: 503,
+            headers: {
+                'Content-Type': 'application/grpc+proto',
+                'grpc-status': '14', // gRPC UNAVAILABLE status code
+                'grpc-message': 'Connection unavailable',
+            },
+        })
     }
 
     if (request.method === 'GET') {
